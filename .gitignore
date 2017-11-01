@@ -1,0 +1,12 @@
+.npmignore
+.serverless
+node_modules
+
+.DS_Store
+
+env.yml
+
+app/helpers-database-seeds.js
+data
+dist
+coverage
