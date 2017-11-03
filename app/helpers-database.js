@@ -44,6 +44,7 @@ module.exports.migrateDB = (sequelize, force) => {
 };
 
 const defineModels = sequelize => {
+  //const pk = { type: Sequelize.INTEGER, primaryKey: true, autoIncrement: true };
   // define models
   const models = {
     transactions: sequelize.define('transaction', {
@@ -56,20 +57,24 @@ const defineModels = sequelize => {
       balance: { type: Sequelize.DECIMAL(6, 2), allowNull: false },
     }),
     tags: sequelize.define('tag', {
-      tag_id: {
-        type: Sequelize.INTEGER,
-        primaryKey: true,
-        autoIncrement: true,
-      },
+      //tag_id: pk,
       name: { type: Sequelize.STRING, allowNull: false },
     }),
     tag_descriptions: sequelize.define('tag_description', {
       tag_id: { type: Sequelize.INTEGER, allowNull: false },
       desc: { type: Sequelize.STRING, allowNull: false },
     }),
+    expand_transactions: sequelize.define('expand_transaction', {
+      transaction_id: { type: Sequelize.INTEGER, allowNull: false },
+      amount: { type: Sequelize.DECIMAL(6, 2), allowNull: false },
+      tags: { type: Sequelize.TEXT, allowNull: false },
+    }),
   };
   // define foreign keys constraints
   models.tag_descriptions.belongsTo(models.tags, { foreignKey: 'tag_id' });
+  models.expand_transactions.belongsTo(models.transactions, {
+    foreignKey: 'transaction_id',
+  });
   // return models
   return models;
 };

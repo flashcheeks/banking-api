@@ -8,6 +8,7 @@ const { createUpdateByPK, createUpdateWhere } = require('./helpers-database');
 
 const { transactionSeeds } = require('./helpers-database-seeds');
 const { tagSeeds, tagDescriptionSeeds } = require('./helpers-database-seeds');
+const { expandedTransactionSeeds } = require('./helpers-database-seeds');
 
 /*
  * Migrate database tables
@@ -30,6 +31,10 @@ module.exports.migrateDB = force => {
       .then(response => {
         if (response.status == 'error') return reject(response);
         return seedTagDescriptions(response.models, response.seeds);
+      })
+      .then(response => {
+        if (response.status == 'error') return reject(response);
+        return seedExpandedTransactions(response.models, response.seeds);
       })
       .then(response => {
         if (response.status == 'error') return reject(response);
@@ -187,7 +192,67 @@ const parseTagDescriptionTags = (models, obj) => {
 const storeTagDescriptions = (models, obj, tag) => {
   // set model and record
   const model = models.tag_descriptions;
-  const record = { tag_id: tag.tag_id, desc: obj[0] };
+  const record = { tag_id: tag.id, desc: obj[0] };
+  // create or update record
+  return createUpdateWhere(model, record, record);
+};
+
+/*
+ * Seed expanded transactions
+ */
+
+const seedExpandedTransactions = (models, seeds) => {
+  return new Promise((resolve, reject) => {
+    parseExpandedTransactionSeeds(models)
+      .then(response => {
+        if (response.status == 'error') return reject(response);
+        seeds.expand_transactions = response;
+        return resolve({ models: models, seeds: seeds });
+      })
+      .catch(err => {
+        return reject({ status: 'error', error: err });
+      });
+  });
+};
+
+const parseExpandedTransactionSeeds = models => {
+  return Promise.all(
+    expandedTransactionSeeds.map(obj => {
+      return parseExpandedTransactionTags(models, obj)
+        .then(response => {
+          if (response.status == 'error') return reject(response);
+          return Promise.resolve(response);
+        })
+        .catch(err => {
+          return Promise.reject({ status: 'error', error: err });
+        });
+    })
+  );
+};
+
+const parseExpandedTransactionTags = (models, obj) => {
+  return Promise.all(
+    obj[1].map(transaction => {
+      const t = obj[0];
+      const where = { date: t[0], desc: t[1], amount: t[2], balance: t[3] };
+      // find records
+      return models.transactions.findOne({ where: where }).then(record => {
+        return record
+          ? storeExpandedTransaction(models, transaction, record)
+          : Promise.reject({ status: 'error', error: 'No records' });
+      });
+    })
+  );
+};
+
+const storeExpandedTransaction = (models, obj, transaction) => {
+  // set model and record
+  const model = models.expand_transactions;
+  const record = {
+    transaction_id: transaction.id,
+    amount: obj[0],
+    tags: JSON.stringify(obj[1]),
+  };
   // create or update record
   return createUpdateWhere(model, record, record);
 };
@@ -294,7 +359,10 @@ module.exports.exportStatement = (account, date) => {
         return formatTransactions(response);
       })
       .then(response => {
-        return fetchStatementTagDescriptions(models, response);
+        return fetchTagDescriptions(models, response);
+      })
+      .then(response => {
+        return fetchExpandedTransactions(models, response);
       })
       .then(response => {
         return resolve(response);
@@ -352,6 +420,7 @@ const formatDateWithLeadingZero = date => {
 const formatTransactions = transactions => {
   return transactions.map(transaction => {
     return {
+      id: transaction.dataValues.id,
       order: transaction.dataValues.order,
       date: transaction.dataValues.date,
       type: transaction.dataValues.type,
@@ -362,7 +431,7 @@ const formatTransactions = transactions => {
   });
 };
 
-const fetchStatementTagDescriptions = (models, transactions) => {
+const fetchTagDescriptions = (models, transactions) => {
   return Promise.all(
     transactions.map(transaction => {
       // set model and where query
@@ -391,4 +460,29 @@ const fetchStatementTags = (models, tagDescriptions) => {
       });
     })
   );
+};
+
+const fetchExpandedTransactions = (models, transactions) => {
+  return Promise.all(
+    transactions.map(transaction => {
+      // set model and where query
+      const model = models.expand_transactions;
+      const where = { transaction_id: transaction.id };
+      // find records
+      return model.findAll({ where: where }).then(response => {
+        if (response.length)
+          transaction.expanded = formatExpandedTransactions(response);
+        return Promise.resolve(transaction);
+      });
+    })
+  );
+};
+
+const formatExpandedTransactions = records => {
+  return records.map(record => {
+    return {
+      amount: record.amount,
+      tags: JSON.parse(record.tags),
+    };
+  });
 };
